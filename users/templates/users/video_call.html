@@ -1,0 +1,160 @@
+{% extends 'users/base.html' %}
+{% block content %}
+<div class="video-page">
+    <div class="video-controls" style="padding:16px;">
+        <div>Room: {{ room_id }}</div>
+        {% if role == 'initiator' %}
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <div style="min-width:0;flex:1;">Share this link with the callee:</div>
+                    <input id="shareLink" type="text" readonly value="{{ request.scheme }}://{{ request.get_host }}{% url 'video_call_join' room_id=room_id %}" style="flex:1;padding:8px;border-radius:6px;border:1px solid #ddd;background:#fafafa;">
+                    <button id="copyLinkBtn" style="padding:8px 10px;border-radius:6px;border:none;background:var(--primary-color);color:#fff;cursor:pointer;">Copy</button>
+                </div>
+        {% endif %}
+    </div>
+
+    <div class="video-grid" style="display:flex;gap:12px;padding:16px;">
+        <div class="local-video" style="flex:1;">
+            <h4>Local</h4>
+            <video id="localVideo" autoplay muted playsinline style="width:100%;border-radius:8px;background:#000;"></video>
+        </div>
+        <div class="remote-video" style="flex:1;">
+            <h4>Remote</h4>
+            <video id="remoteVideo" autoplay playsinline style="width:100%;border-radius:8px;background:#000;"></video>
+        </div>
+    </div>
+
+    <div style="padding:16px;">
+        <button id="startBtn">Start / Recreate Peer</button>
+        <button id="hangupBtn">Hang Up</button>
+    </div>
+</div>
+
+<script>
+    // Basic WebRTC with HTTP polling signaling (offer/answer + ICE candidates)
+    (function(){
+        const roomId = '{{ room_id }}';
+        const role = '{{ role }}';
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        let pc = null;
+        let localStream = null;
+        let polling = null;
+
+        async function getMedia(){
+            try{
+                localStream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+                localVideo.srcObject = localStream;
+            }catch(e){
+                alert('Camera/microphone error: '+e.message);
+            }
+        }
+
+        async function createPeer(){
+            pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+            pc.ontrack = e => { remoteVideo.srcObject = e.streams[0]; };
+            pc.onicecandidate = e => {
+                if(e.candidate){
+                    fetch(`/video/candidate/${roomId}/`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender: role, candidate: JSON.stringify(e.candidate)})});
+                }
+            };
+            if(localStream){ localStream.getTracks().forEach(t=>pc.addTrack(t, localStream)); }
+            return pc;
+        }
+
+        async function initiatorFlow(){
+            await createPeer();
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            // POST offer
+            await fetch(`/video/offer/${roomId}/`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sdp: offer.sdp})});
+
+            // poll for answer
+            polling = setInterval(async ()=>{
+                const res = await fetch(`/video/answer/${roomId}/`);
+                const j = await res.json();
+                if(j.answer){
+                    await pc.setRemoteDescription({type:'answer', sdp: j.answer});
+                    clearInterval(polling);
+                }
+                // poll ICE candidates
+                const cs = await fetch(`/video/candidates/${roomId}/`);
+                const cj = await cs.json();
+                if(cj.candidates){
+                    cj.candidates.forEach(c => {
+                        if(c.sender !== role){
+                            try{ pc.addIceCandidate(new RTCIceCandidate(JSON.parse(c.candidate))); }catch(e){}
+                        }
+                    });
+                }
+            }, 1000);
+        }
+
+        async function calleeFlow(){
+            await createPeer();
+            // poll for offer
+            polling = setInterval(async ()=>{
+                const res = await fetch(`/video/offer/${roomId}/`);
+                const j = await res.json();
+                if(j.offer){
+                    clearInterval(polling);
+                    await pc.setRemoteDescription({type:'offer', sdp: j.offer});
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    await fetch(`/video/answer/${roomId}/`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sdp: answer.sdp})});
+                    // start candidate polling
+                    candidatePolling();
+                }
+            },1000);
+        }
+
+        async function candidatePolling(){
+            setInterval(async ()=>{
+                const res = await fetch(`/video/candidates/${roomId}/`);
+                const j = await res.json();
+                if(j.candidates){
+                    j.candidates.forEach(c => {
+                        if(c.sender !== role){
+                            try{ pc.addIceCandidate(new RTCIceCandidate(JSON.parse(c.candidate))); }catch(e){}
+                        }
+                    });
+                }
+            },1000);
+        }
+
+        document.getElementById('startBtn').addEventListener('click', async ()=>{
+            if(pc){ pc.close(); pc = null; }
+            await getMedia();
+            if(role === 'initiator') await initiatorFlow(); else await calleeFlow();
+        });
+
+        document.getElementById('hangupBtn').addEventListener('click', ()=>{
+            if(pc){ pc.close(); pc = null; }
+            if(localStream){ localStream.getTracks().forEach(t=>t.stop()); }
+            if(polling) clearInterval(polling);
+        });
+
+        // auto-start getMedia so user sees preview
+        getMedia();
+        // If role is callee, immediately start polling for offer
+        if(role === 'callee'){
+            setTimeout(()=>document.getElementById('startBtn').click(), 800);
+        }
+    })();
+</script>
+
+<script>
+// copy link UX
+document.addEventListener('DOMContentLoaded', function(){
+    const copyBtn = document.getElementById('copyLinkBtn');
+    const shareInput = document.getElementById('shareLink');
+    if(copyBtn && shareInput){
+        copyBtn.addEventListener('click', function(){
+            shareInput.select();
+            try{ document.execCommand('copy'); copyBtn.textContent = 'Copied'; setTimeout(()=>copyBtn.textContent='Copy',1500); }
+            catch(e){ navigator.clipboard && navigator.clipboard.writeText(shareInput.value).then(()=>{ copyBtn.textContent='Copied'; setTimeout(()=>copyBtn.textContent='Copy',1500); }); }
+        });
+    }
+});
+</script>
+
+{% endblock %}

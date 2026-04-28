@@ -1,0 +1,488 @@
+{% extends 'users/base.html' %}
+{% block content %}
+<div class="chat-container">
+    <aside class="user-sidebar">
+        <h2>Чаты</h2>
+        <div class="sidebar-search">
+            <input type="text" id="contact-search" placeholder="Поиск...">
+        </div>
+        <ul id="contacts-list">
+            {% for u in users %}
+                <li><a href="{% url 'member' u.id %}" class="user-link" data-username="{{ u.username }}">
+                    <div class="contact-avatar">
+                        {% if u.profile.image and u.profile.image.name != 'default.jpg' %}
+                            <img src="{{ u.profile.image.url }}" alt="{{ u.username }}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                        {% else %}
+                            {{ u.username|slice:":1"|upper }}
+                        {% endif %}
+                    </div>
+                    <div class="contact-info">
+                        <div class="contact-name">{{ u.username }}</div>
+                    </div>
+                </a></li>
+            {% empty %}
+                <li style="padding: 20px; text-align: center; color: #999;">Нет контактов</li>
+            {% endfor %}
+        </ul>
+    </aside>
+    <div class="chat-main">
+        <!-- Chat header like Telegram -->
+        <div class="chat-header">
+            <div class="chat-header-left">
+                <div class="chat-header-avatar-lg">
+                    {% if for_user.profile.image and for_user.profile.image.name != 'default.jpg' %}
+                        <img src="{{ for_user.profile.image.url }}" alt="{{ for_user.username }}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                    {% else %}
+                        {{ for_user.username|slice:":1"|upper }}
+                    {% endif %}
+                </div>
+                <div class="chat-header-info">
+                    <div class="chat-header-name">{{ for_user.username }}</div>
+                    <div class="chat-header-status">онлайн</div>
+                </div>
+            </div>
+            <div class="chat-header-actions">
+                <button class="header-btn" id="searchToggle" title="Поиск">🔍</button>
+                <a id="startCallBtn" class="header-btn" href="{% url 'video_call_create' for_user.id %}" title="Видеозвонок">📞</a>
+                <div class="header-menu-wrapper" style="position:relative;">
+                    <button class="header-btn" id="menuBtn" title="Меню">⋮</button>
+                    <div id="headerMenu" class="header-menu" style="display:none; position:absolute; right:0; top:36px; background:#fff; border:1px solid #e5e5e5; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); padding:8px; min-width:160px; z-index:200;">
+                        <a href="{% url 'view_profile' for_user.id %}" class="menu-item" style="display:block;padding:8px 10px;color:#111;text-decoration:none;">Просмотреть профиль</a>
+                        <div class="menu-item" id="changeWallpaper" style="display:block;padding:8px 10px;color:#111;cursor:pointer;">Изменить обои</div>
+                        <input type="file" id="wallpaperUpload" accept="image/*" style="display:none;">
+                        <div style="border-top:1px solid #f0f0f0;margin-top:6px;padding-top:6px;">
+                            <div style="font-size:12px;color:#666;padding:4px 0">Обои: </div>
+                            <div style="display:flex;gap:6px;">
+                                <button class="wallpaper-btn" data-bg="default" style="padding:6px;border-radius:6px;border:1px solid #eee;background:#fff;cursor:pointer;">По умолчанию</button>
+                                <button class="wallpaper-btn" data-bg="pattern" style="padding:6px;border-radius:6px;border:1px solid #eee;background:#fafafa;cursor:pointer;">Узор</button>
+                                <button class="wallpaper-btn" data-bg="grid" style="padding:6px;border-radius:6px;border:1px solid #eee;background:#f5f5f5;cursor:pointer;">Сетка</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Messages area -->
+        <div class="chat-messages">
+            <main class="chat-wrapper" id="chat-window">
+                {% if messages %}
+                    <ul class="message-list">
+                        {% for message in messages %}
+                            <li class="message-bubble {% if message.sender == request.user.username %}my-message{% else %}other-message{% endif %}">
+                                <div class="message-content">
+                                    {% if message.image %}
+                                        <img src="{{ message.image }}" class="message-image" alt="Image">
+                                    {% endif %}
+                                    {% if message.video %}
+                                        <video controls class="message-video">
+                                            <source src="{{ message.video.url }}" type="video/mp4">
+                                        </video>
+                                    {% endif %}
+                                    {% if message.decrypted_text %}
+                                        <div class="text-content">{{ message.decrypted_text }}</div>
+                                    {% endif %}
+                                    {% if message.file %}
+                                        <a href="{{ message.file.url }}" class="attachment-link" target="_blank">📎 {{ message.file.name|truncatechars:15 }}</a>
+                                    {% endif %}
+                                </div>
+                                <div class="message-footer">
+                                    <span class="message-time">{{ message.published|date:"H:i" }}</span>
+                                    {% if message.sender == request.user.username %}
+                                        <a href="{% url 'delete' message.id %}" class="delete-btn" title="Удалить">✕</a>
+                                    {% endif %}
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="empty-chat">
+                        <div class="empty-icon">💬</div>
+                        <p class="empty-title">Пока нет сообщений</p>
+                        <p class="empty-desc">Начните переписку с <strong>{{ for_user.username }}</strong></p>
+                    </div>
+                {% endif %}
+            </main>
+        </div>
+
+        <!-- Input area -->
+        <form method="POST" enctype="multipart/form-data" class="input-panel">
+            {% csrf_token %}
+            <div class="input-container">
+                <div class="input-message-row">
+                    <div class="input-attachments">
+                        <label class="file-upload-wrapper" title="Фото">
+                            🖼️ {{ form.image }}
+                        </label>
+                        <label class="file-upload-wrapper" title="Видео">
+                            🎥 {{ form.video }}
+                        </label>
+                        <label class="file-upload-wrapper" title="Файл">
+                            📎 {{ form.file }}
+                        </label>
+                    </div>
+                    {{ form.message }}
+                    <button type="submit" class="send-btn" title="Отправить (Ctrl+Enter)">➤</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .chat-main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #ffffff;
+        overflow: hidden;
+    }
+
+    .chat-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 20px;
+        border-bottom: 1px solid #e5e5e5;
+        background: #ffffff;
+        flex-shrink: 0;
+    }
+
+    .chat-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .chat-header-avatar-lg {
+        width: 40px;
+        height: 40px;
+        background: linear-gradient(135deg, #0088cc, #006ba3);
+        color: #fff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 1rem;
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+    .chat-header-avatar-lg img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .chat-header-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .chat-header-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: #000;
+    }
+
+    .chat-header-status {
+        font-size: 0.75rem;
+        color: #999;
+    }
+
+    .chat-header-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .header-btn {
+        background: none;
+        border: none;
+        font-size: 1.2rem;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 6px;
+        color: #0088cc;
+        transition: all 0.2s;
+    }
+
+    .header-btn:hover {
+        background: #f5f5f5;
+    }
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .empty-chat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        color: #999;
+        padding: 40px 20px;
+        text-align: center;
+    }
+
+    .empty-icon {
+        font-size: 4rem;
+        margin-bottom: 16px;
+        opacity: 0.3;
+    }
+
+    .empty-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0 0 8px;
+        color: #000;
+    }
+
+    .empty-desc {
+        font-size: 0.9rem;
+        margin: 0;
+        color: #999;
+    }
+
+    .message-content {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .message-footer {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 6px;
+        margin-top: 4px;
+    }
+
+    .message-time {
+        font-size: 0.75rem;
+        opacity: 0.6;
+    }
+
+    .delete-btn {
+        background: none;
+        border: none;
+        color: #999;
+        cursor: pointer;
+        font-size: 0.8rem;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+
+    .message-bubble:hover .delete-btn {
+        opacity: 1;
+    }
+
+    .delete-btn:hover {
+        color: #e74c3c;
+    }
+
+    .input-attachments {
+        display: flex;
+        gap: 6px;
+        margin-right: 6px;
+        /* keep no vertical padding */
+        padding: 0;
+        align-items: center;
+    }
+
+    .file-upload-wrapper {
+        position: relative;
+        cursor: pointer;
+        font-size: 1.3rem;
+        color: #0088cc;
+        transition: color 0.2s;
+    }
+
+    .file-upload-wrapper:hover {
+        color: #0066aa;
+    }
+
+    .file-upload-wrapper input {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .input-message-row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+    }
+
+    textarea[name="message"] {
+        flex: 1 !important;
+        margin: 0 !important;
+        padding: 10px 15px !important;
+        border: 1px solid #e5e5e5 !important;
+        border-radius: 16px !important;
+        font-size: 0.95rem;
+        outline: none;
+        transition: all 0.2s;
+        min-height: 44px;
+        max-height: 240px;
+        resize: vertical;
+    }
+
+    textarea[name="message"]:focus {
+        border-color: #0088cc !important;
+        box-shadow: 0 0 0 2px rgba(0, 136, 204, 0.08) !important;
+    }
+
+    .send-btn {
+        background: var(--primary-color);
+        border: none;
+        font-size: 1.1rem;
+        cursor: pointer;
+        color: #fff;
+        width: 44px;
+        height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        box-shadow: 0 2px 6px rgba(0,136,204,0.18);
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+
+    .send-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 10px rgba(0,136,204,0.22);
+    }
+
+    .send-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 6px rgba(0,136,204,0.18);
+    }
+
+    @media (max-width: 768px) {
+        .user-sidebar {
+            width: 0;
+            display: none;
+        }
+        .chat-main {
+            flex: 1;
+        }
+    }
+</style>
+
+<script>
+    // Contact search functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('contact-search');
+        const contactsList = document.getElementById('contacts-list');
+        const userLinks = contactsList.querySelectorAll('.user-link');
+
+        if (searchInput) {
+            searchInput.addEventListener('input', function(e) {
+                const searchTerm = e.target.value.toLowerCase().trim();
+                
+                userLinks.forEach(link => {
+                    const username = link.dataset.username.toLowerCase();
+                    const contactInfo = link.querySelector('.contact-name').textContent.toLowerCase();
+                    
+                    if (username.includes(searchTerm) || contactInfo.includes(searchTerm)) {
+                        link.parentElement.style.display = '';
+                    } else {
+                        link.parentElement.style.display = 'none';
+                    }
+                });
+            });
+        }
+
+        // Auto-scroll to bottom on load
+        const chatWindow = document.getElementById('chat-window');
+        if (chatWindow) {
+            setTimeout(() => {
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            }, 100);
+        }
+
+        // Send message on Ctrl+Enter for textarea
+        const messageInput = document.querySelector('textarea[name="message"]');
+        if (messageInput) {
+            messageInput.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    e.preventDefault();
+                    this.form.submit();
+                }
+            });
+        }
+
+        // Header menu toggle and wallpaper handling
+        const menuBtn = document.getElementById('menuBtn');
+        const headerMenu = document.getElementById('headerMenu');
+        const changeWallpaper = document.getElementById('changeWallpaper');
+        const wallpaperUpload = document.getElementById('wallpaperUpload');
+        const wallpaperBtns = document.querySelectorAll('.wallpaper-btn');
+        const chatWrapper = document.querySelector('.chat-wrapper');
+
+        menuBtn && menuBtn.addEventListener('click', function(e){
+            e.stopPropagation();
+            headerMenu.style.display = headerMenu.style.display === 'none' ? 'block' : 'none';
+        });
+
+        // close menu on outside click
+        document.addEventListener('click', function(){ if(headerMenu) headerMenu.style.display = 'none'; });
+
+        changeWallpaper && changeWallpaper.addEventListener('click', function(){ wallpaperUpload.click(); });
+        wallpaperUpload && wallpaperUpload.addEventListener('change', function(e){
+            const f = e.target.files[0];
+            if(!f) return;
+            const url = URL.createObjectURL(f);
+            localStorage.setItem('chat_wallpaper', url);
+            applyWallpaper();
+        });
+
+        wallpaperBtns.forEach(b=> b.addEventListener('click', function(){
+            const v = this.dataset.bg;
+            localStorage.setItem('chat_wallpaper', v);
+            applyWallpaper();
+        }));
+
+        function applyWallpaper(){
+            const v = localStorage.getItem('chat_wallpaper') || 'default';
+            if(!chatWrapper) return;
+            if(v === 'default'){
+                chatWrapper.style.background = 'linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%)';
+                chatWrapper.style.backgroundSize = '';
+            } else if(v === 'pattern'){
+                chatWrapper.style.background = "repeating-linear-gradient( -45deg, #f8fbfd, #f8fbfd 10px, #f0f6fb 10px, #f0f6fb 20px)";
+            } else if(v === 'grid'){
+                chatWrapper.style.background = "linear-gradient(#f5f5f5, #fff)";
+                chatWrapper.style.backgroundImage = "linear-gradient(0deg, rgba(0,0,0,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px)";
+                chatWrapper.style.backgroundSize = '24px 24px, 24px 24px';
+            } else if(v.startsWith('blob:') || v.startsWith('data:') || v.startsWith('http')){
+                chatWrapper.style.background = `url(${v}) center/cover no-repeat`;
+            }
+        }
+
+        // apply wallpaper on load
+        applyWallpaper();
+    });
+</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    const btn = document.getElementById('startCallBtn');
+    if(!btn) return;
+    btn.addEventListener('click', function(e){
+        e.preventDefault();
+        const name = '{{ for_user.username }}';
+        const ok = confirm('Начать видеозвонок с ' + name + '?');
+        if(ok){ window.location.href = btn.href; }
+    });
+});
+</script>
+{% endblock %}

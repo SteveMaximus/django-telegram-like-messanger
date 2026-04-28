@@ -1,0 +1,40 @@
+{% extends 'users/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="home-container">
+    <div class="hero-section">
+        <div class="hero-content">
+            <h1>💬 Добро пожаловать!</h1>
+            <p>Легко и безопасно общайтесь с друзьями</p>
+        </div>
+    </div>
+
+    <div class="users-grid">
+        <h2>Все пользователи</h2>
+        <div class="users-container">
+            {% for user in users %}
+                <a class="user-card" href="{% url 'member' user.id %}">
+                    <div class="user-avatar">
+                        {% if user.profile.image and user.profile.image.name != 'default.jpg' %}
+                            <img src="{{ user.profile.image.url }}" alt="{{ user.username }}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                        {% else %}
+                            {{ user.username|slice:":1"|upper }}
+                        {% endif %}
+                    </div>
+                    <div class="user-info">
+                        <div class="user-name">{{ user.username }}</div>
+                        <div class="user-status">Нажмите для чата</div>
+                    </div>
+                    <div class="user-arrow">→</div>
+                </a>
+            {% empty %}
+                <div class="empty-state">
+                    <p style="font-size: 3rem;">👥</p>
+                    <p>Пользователей пока нет</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
