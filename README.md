@@ -1,4 +1,3 @@
----
 ## 🏗️ Big‑picture architecture
 
 * Single Django project named `social_network` with one app `users`.  All business logic lives in `users/`.
