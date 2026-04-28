@@ -1,4 +1,4 @@
-## 🏗️ Big‑picture architecture
+## Big‑picture architecture
 
 * Single Django project named `social_network` with one app `users`.  All business logic lives in `users/`.
 * `manage.py` is the primary entry point for running the development server, applying migrations, creating a superuser, etc.
@@ -10,7 +10,7 @@
 * Templates are stored under `users/templates/users/`.  Each view usually renders one template with the same name (e.g. `get_user.html`).
 
 ---
-## 🔁 Core data flow and patterns
+## Core data flow and patterns
 
 * **Messaging model (`users.models.Messages`)**
   * The `message` field is stored encrypted.  `Messages.save()` overrides the base method to prepend `enc:` and encrypt text by calling `users/basic_algorithms/chiphers.encrypt` (a simple XOR + base64 scheme).  Decryption is performed with `users/basic_algorithms/chiphers.decrypt`, and views must call `msg.get_decrypted()` before rendering (see `get_and_send_user_messages`).
@@ -21,7 +21,7 @@
 * **Rubrics**: simple `CharField` model used nowhere yet; treat as a tag/tag‑category placeholder.
 
 ---
-## ⚙️ Developer workflows
+##  Developer workflows
 
 1. **Environment setup**
    ```bash
@@ -54,7 +54,7 @@
 > **Note:** Most views use `@login_required`.  Some (about, user list) are intentionally left open; don’t add `login_required` unless the feature needs it.
 
 ---
-## 📁 Project‑specific conventions
+## Project‑specific conventions
 
 * All application code lives in `users/`.  If you add another app, mirror the naming and URL‑include pattern.
 * Russian strings appear in model `verbose_name` attributes and templates.  Keep them if editing UI text unless asked to internationalize.
@@ -63,14 +63,14 @@
 * File and image uploads use `upload_to="…"` relative to `MEDIA_ROOT`.
 
 ---
-## 🔗 Integration points & dependencies
+##  Integration points & dependencies
 
 * External libs: `django`, `crispy_forms` (templating).  No other third‑party code is included.
 * Encryption uses `settings.SECRET_KEY` via the XOR cipher; changing the key will invalidate all stored messages unless you re‑encrypt them.
 * The user authentication system is Django’s built‑in one (`django.contrib.auth`).  Views import `auth_views` for login/logout.
 
 ---
-## 📝 Adding new features
+##  Adding new features
 
 * New URLs → add to `users/urls.py` and corresponding view/template.
 * Data migrations (e.g. changing message encryption) should live in `users/migrations/`.
@@ -78,14 +78,14 @@
 * Use `request.user.username` consistently; do not mix User objects and username strings.
 
 ---
-## 📌 What not to do
+##  What not to do
 
 * Don’t bypass the encryption code by writing directly to `Messages.message` unless you explicitly want plain text (rare).
 * Avoid adding hard‑coded URLs; use `reverse()` or name-based `redirect()`.
 * Don’t rely on uncommitted templates or static files; everything is checked into Git.
 
 ---
-## ✅ Where to look when stuck
+##  Where to look when stuck
 
 * `users/models.py` — data layer and encryption logic.
 * `users/views.py` — main request handlers and query patterns.
